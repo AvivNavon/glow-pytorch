@@ -165,7 +165,7 @@ def train(args, model, optimizer):
                         range=(-0.5, 0.5),
                     )
                 if args.wandb:
-                    wandb.save(sample_path / f"{str(i + 1).zfill(6)}.png")
+                    wandb.save((sample_path / f"{str(i + 1).zfill(6)}.png").as_posix())
 
             if i % args.model_every == 0:
                 torch.save(
