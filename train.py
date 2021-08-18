@@ -1,15 +1,16 @@
+import logging
 from tqdm import tqdm
-import numpy as np
-from PIL import Image
-from math import log, sqrt, pi
+from pathlib import Path
+from math import log
 
 import argparse
 
 import torch
 from torch import nn, optim
-from torch.autograd import Variable, grad
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms, utils
+from utils import common_parser, set_seed, set_logger
+import wandb
 
 from model import Glow
 
@@ -31,11 +32,15 @@ parser.add_argument(
     "--affine", action="store_true", help="use affine coupling instead of additive"
 )
 parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
+parser.add_argument("--samples-every", default=500, type=int, help="samples every")
+parser.add_argument("--model-every", default=50000, type=int, help="model every")
 parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
 parser.add_argument("--img_size", default=64, type=int, help="image size")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
 parser.add_argument("--n_sample", default=20, type=int, help="number of samples")
+parser.add_argument("--sample-path", type=str, default='samples', help="Path to image directory")
 parser.add_argument("--path", metavar="PATH", type=str, help="Path to image directory")
+parser.add_argument("--seed", default=42, type=int, help="random seed")
 
 
 def sample_data(path, batch_size, image_size):
@@ -94,6 +99,9 @@ def calc_loss(log_p, logdet, image_size, n_bins):
 
 
 def train(args, model, optimizer):
+    sample_path = Path(args.sample_path)
+    sample_path.mkdir(exist_ok=True, parents=True)
+
     dataset = iter(sample_data(args.path, args.batch, args.img_size))
     n_bins = 2.0 ** args.n_bits
 
@@ -140,17 +148,26 @@ def train(args, model, optimizer):
                 f"Loss: {loss.item():.5f}; logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
             )
 
-            if i % 100 == 0:
+            if args.wandb:
+                wandb.log({
+                    'loss': loss.item(),
+                    'logP': log_p.item(),
+                    'logdet': log_det.item()
+                })
+
+            if i % args.samples_every == 0:
                 with torch.no_grad():
                     utils.save_image(
                         model_single.reverse(z_sample).cpu().data,
-                        f"sample/{str(i + 1).zfill(6)}.png",
+                        sample_path / f"{str(i + 1).zfill(6)}.png",
                         normalize=True,
                         nrow=10,
                         range=(-0.5, 0.5),
                     )
+                if args.wandb:
+                    wandb.save(sample_path / f"{str(i + 1).zfill(6)}.png")
 
-            if i % 10000 == 0:
+            if i % args.model_every == 0:
                 torch.save(
                     model.state_dict(), f"checkpoint/model_{str(i + 1).zfill(6)}.pt"
                 )
@@ -161,15 +178,22 @@ def train(args, model, optimizer):
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    print(args)
+    set_logger()
 
     model_single = Glow(
         3, args.n_flow, args.n_block, affine=args.affine, conv_lu=not args.no_lu
     )
     model = nn.DataParallel(model_single)
-    # model = model_single
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
+
+    # set seed
+    set_seed(args.seed)
+    # wandb
+    if args.wandb:
+        name = f"lr_{args.lr}_bs_{args.batch_size}_no_LU_{args.no_lu}_seed_{args.seed}"
+        wandb.init(project="glow", entity='avivnav', name=name)
+        wandb.config.update(args)
 
     train(args, model, optimizer)
