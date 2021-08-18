@@ -17,7 +17,7 @@ from model import Glow
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser(description="Glow trainer")
-parser.add_argument("--batch", default=16, type=int, help="batch size")
+parser.add_argument("--batch-size", default=16, type=int, help="batch size")
 parser.add_argument("--iter", default=200000, type=int, help="maximum iterations")
 parser.add_argument(
     "--n_flow", default=32, type=int, help="number of flows in each block"
@@ -102,7 +102,7 @@ def train(args, model, optimizer):
     sample_path = Path(args.sample_path)
     sample_path.mkdir(exist_ok=True, parents=True)
 
-    dataset = iter(sample_data(args.path, args.batch, args.img_size))
+    dataset = iter(sample_data(args.path, args.batch_size, args.img_size))
     n_bins = 2.0 ** args.n_bits
 
     z_sample = []
