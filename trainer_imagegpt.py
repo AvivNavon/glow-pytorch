@@ -19,7 +19,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser(description="Glow trainer", parents=[common_parser])
 parser.add_argument("--batch-size", default=32, type=int, help="batch size")
-parser.add_argument("--epochs", default=100, type=int, help="maximum iterations")
+parser.add_argument("--epochs", default=100, type=int, help="number of epochs")
 parser.add_argument(
     "--n_flow", default=32, type=int, help="number of flows in each block"
 )
@@ -36,7 +36,8 @@ parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
 parser.add_argument("--samples-every", default=500, type=int, help="samples every")
 parser.add_argument("--model-every", default=50000, type=int, help="model every")
 parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
-parser.add_argument("--img_size", default=64, type=int, help="image size")
+parser.add_argument("--img_size", default=32, type=int, help="image size")
+parser.add_argument("--workers", default=0, type=int, help="num workers")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
 parser.add_argument("--n_sample", default=20, type=int, help="number of samples")
 parser.add_argument("--sample-path", type=str, default='samples', help="Path to image directory")
@@ -51,7 +52,7 @@ def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=1
     train, test = load_datasets(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
     dataset = TensorDataset(train)
 
-    loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=4)
+    loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=args.workers)
 
     # loader = iter(loader)
 
@@ -112,8 +113,9 @@ def train(args, model, optimizer):
         z_sample.append(z_new.to(device))
     pbar = trange(args.epochs)
 
+    global_iter = 0
     for epoch in pbar:
-        for i, batch in enumerate(laoder):
+        for _, batch in enumerate(laoder):
             # todo: need to change once we have likelihood
             (image, ) = batch
             image = image.to(device)
@@ -125,7 +127,7 @@ def train(args, model, optimizer):
 
             image = image / n_bins - 0.5
 
-            if i == 0:
+            if global_iter == 0:
                 with torch.no_grad():
                     log_p, logdet, _ = model.module(
                         image + torch.rand_like(image) / n_bins
@@ -157,26 +159,27 @@ def train(args, model, optimizer):
                     'logdet': log_det.item()
                 })
 
-            if i % args.samples_every == 0:
+            if global_iter % args.samples_every == 0:
                 with torch.no_grad():
                     utils.save_image(
                         model_single.reverse(z_sample).cpu().data,
-                        sample_path / f"{str(i + 1).zfill(6)}.png",
+                        sample_path / f"{str(global_iter + 1).zfill(6)}.png",
                         normalize=True,
                         nrow=10,
                         # range=(-0.5, 0.5),
                         value_range=(-0.5, 0.5),
                         )
                 if args.wandb:
-                    wandb.save((sample_path / f"{str(i + 1).zfill(6)}.png").as_posix())
+                    wandb.save((sample_path / f"{str(global_iter + 1).zfill(6)}.png").as_posix())
 
-            if i % args.model_every == 0:
+            if global_iter % args.model_every == 0:
                 torch.save(
-                    model.state_dict(), f"checkpoint/model_{str(i + 1).zfill(6)}.pt"
+                    model.state_dict(), f"checkpoint/model_{str(global_iter + 1).zfill(6)}.pt"
                 )
                 torch.save(
-                    optimizer.state_dict(), f"checkpoint/optim_{str(i + 1).zfill(6)}.pt"
+                    optimizer.state_dict(), f"checkpoint/optim_{str(global_iter + 1).zfill(6)}.pt"
                 )
+            global_iter += 1
 
 
 if __name__ == "__main__":
