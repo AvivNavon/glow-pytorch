@@ -53,8 +53,18 @@ def get_loaders(path, clusters_path, sample_flag=False, device=None, batch_size=
     train_loader = DataLoader(train, shuffle=True, batch_size=batch_size, num_workers=4)
     test_loader = DataLoader(test, shuffle=False, batch_size=batch_size, num_workers=4)
 
-    return train_loader, test_loader
+    # todo: refactor
+    loader = iter(train_loader)
+    while True:
+        try:
+            yield next(loader)
 
+        except StopIteration:
+            loader = DataLoader(
+                train, shuffle=True, batch_size=batch_size, num_workers=4
+            )
+            loader = iter(loader)
+            yield next(loader)
 
 
 def calc_z_shapes(n_channel, input_size, n_flow, n_block):
@@ -91,7 +101,7 @@ def train(args, model, optimizer):
     sample_path.mkdir(exist_ok=True, parents=True)
 
     train_loader, test_loader = get_loaders(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
-    train_loader = iter(train_loader)
+    # train_loader = iter(train_loader)
     n_bins = 2.0 ** args.n_bits
 
     z_sample = []
