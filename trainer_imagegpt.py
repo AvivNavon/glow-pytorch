@@ -132,7 +132,7 @@ def train(args, model, optimizer):
                     log_p, logdet, _ = model.module(
                         image + torch.rand_like(image) / n_bins
                     )
-
+                    global_iter += 1
                     continue
 
             else:
