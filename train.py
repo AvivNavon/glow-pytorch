@@ -162,7 +162,8 @@ def train(args, model, optimizer):
                         sample_path / f"{str(i + 1).zfill(6)}.png",
                         normalize=True,
                         nrow=10,
-                        range=(-0.5, 0.5),
+                        # range=(-0.5, 0.5),
+                        value_range=(-0.5, 0.5),
                     )
                 if args.wandb:
                     wandb.save((sample_path / f"{str(i + 1).zfill(6)}.png").as_posix())
