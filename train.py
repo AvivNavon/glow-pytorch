@@ -13,6 +13,7 @@ from utils import common_parser, set_seed, set_logger
 import wandb
 
 from model import Glow
+from data import load_datasets
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -30,6 +31,9 @@ parser.add_argument(
 )
 parser.add_argument(
     "--affine", action="store_true", help="use affine coupling instead of additive"
+)
+parser.add_argument(
+    "--from-h5", action="store_true", help="our data", default=False
 )
 parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
 parser.add_argument("--samples-every", default=500, type=int, help="samples every")

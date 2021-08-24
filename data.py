@@ -75,6 +75,14 @@ class ImageMapping:
         return x
 
 
+def load_datasets(path: Path, clusters_path, sample_flag=False, device=None):
+    train, test = load_h5_dataset(Path(path))
+    mapping = ImageMapping(clusters_path, sample_flag=sample_flag, device=device)
+    train = mapping.map_image(train)
+    test = mapping.map_image(train)
+    return train, test
+
+
 if __name__ == '__main__':
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -88,4 +96,5 @@ if __name__ == '__main__':
     mapping = ImageMapping('./data/kmeans_centers.npy')
     x = mapping.map_image(test)
     logging.info(x.shape)
+    logging.info(x[0])
 
