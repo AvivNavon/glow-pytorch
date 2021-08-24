@@ -79,7 +79,7 @@ def load_datasets(path: Path, clusters_path, sample_flag=False, device=None):
     train, test = load_h5_dataset(Path(path))
     mapping = ImageMapping(clusters_path, sample_flag=sample_flag, device=device)
     train = mapping.map_image(train)
-    test = mapping.map_image(train)
+    test = mapping.map_image(test)
     return train, test
 
 
