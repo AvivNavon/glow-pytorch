@@ -45,23 +45,22 @@ parser.add_argument("--path-to-clusters", type=Path, help="Path to image directo
 parser.add_argument("--seed", default=42, type=int, help="random seed")
 
 
-def get_loaders(path, clusters_path, sample_flag=False, device=None, batch_size=16):
+def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=16):
+    # todo: refactor
     # todo: we need to add augmentations like in train.py
     train, test = load_datasets(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
-    train = TensorDataset(train)
-    test = TensorDataset(test)
-    train_loader = DataLoader(train, shuffle=True, batch_size=batch_size, num_workers=4)
-    test_loader = DataLoader(test, shuffle=False, batch_size=batch_size, num_workers=4)
+    dataset = TensorDataset(train)
 
-    # todo: refactor
-    loader = iter(train_loader)
+    loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=4)
+    loader = iter(loader)
+
     while True:
         try:
             yield next(loader)
 
         except StopIteration:
             loader = DataLoader(
-                train, shuffle=True, batch_size=batch_size, num_workers=4
+                dataset, shuffle=True, batch_size=batch_size, num_workers=4
             )
             loader = iter(loader)
             yield next(loader)
@@ -100,7 +99,7 @@ def train(args, model, optimizer):
     sample_path = Path(args.sample_path)
     sample_path.mkdir(exist_ok=True, parents=True)
 
-    dataset = iter(get_loaders(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size))
+    dataset = iter(get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size))
     # train_loader = iter(train_loader)
     n_bins = 2.0 ** args.n_bits
 
@@ -113,7 +112,7 @@ def train(args, model, optimizer):
     with tqdm(range(args.iter)) as pbar:
         for i in pbar:
             # todo: need to change once we have likelihood
-            image = next(dataset)
+            (image, ) = next(dataset)
             image = image.to(device)
 
             image = image / 255.  # todo: we need to add transformations and augmentations
