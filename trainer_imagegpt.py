@@ -1,5 +1,5 @@
 import logging
-from tqdm import tqdm
+from tqdm import tqdm, trange
 from math import log
 from pathlib import Path
 
@@ -18,8 +18,8 @@ from data import load_datasets
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 parser = argparse.ArgumentParser(description="Glow trainer", parents=[common_parser])
-parser.add_argument("--batch-size", default=16, type=int, help="batch size")
-parser.add_argument("--iter", default=200000, type=int, help="maximum iterations")
+parser.add_argument("--batch-size", default=32, type=int, help="batch size")
+parser.add_argument("--epochs", default=100, type=int, help="maximum iterations")
 parser.add_argument(
     "--n_flow", default=32, type=int, help="number of flows in each block"
 )
@@ -52,18 +52,20 @@ def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=1
     dataset = TensorDataset(train)
 
     loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=4)
-    loader = iter(loader)
 
-    while True:
-        try:
-            yield next(loader)
+    # loader = iter(loader)
 
-        except StopIteration:
-            loader = DataLoader(
-                dataset, shuffle=True, batch_size=batch_size, num_workers=4
-            )
-            loader = iter(loader)
-            yield next(loader)
+    # while True:
+    #     try:
+    #         yield next(loader)
+    #
+    #     except StopIteration:
+    #         loader = DataLoader(
+    #             dataset, shuffle=True, batch_size=batch_size, num_workers=4
+    #         )
+    #         loader = iter(loader)
+    #         yield next(loader)
+    return loader
 
 
 def calc_z_shapes(n_channel, input_size, n_flow, n_block):
@@ -99,7 +101,7 @@ def train(args, model, optimizer):
     sample_path = Path(args.sample_path)
     sample_path.mkdir(exist_ok=True, parents=True)
 
-    dataset = iter(get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size))
+    laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
     # train_loader = iter(train_loader)
     n_bins = 2.0 ** args.n_bits
 
@@ -108,11 +110,12 @@ def train(args, model, optimizer):
     for z in z_shapes:
         z_new = torch.randn(args.n_sample, *z) * args.temp
         z_sample.append(z_new.to(device))
+    pbar = trange(args.epochs)
 
-    with tqdm(range(args.iter)) as pbar:
-        for i in pbar:
+    for epoch in pbar:
+        for i, batch in enumerate(laoder):
             # todo: need to change once we have likelihood
-            (image, ) = next(dataset)
+            (image, ) = batch
             image = image.to(device)
 
             image = image / 255.  # todo: we need to add transformations and augmentations
