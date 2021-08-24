@@ -100,7 +100,7 @@ def train(args, model, optimizer):
     sample_path = Path(args.sample_path)
     sample_path.mkdir(exist_ok=True, parents=True)
 
-    train_loader, test_loader = get_loaders(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
+    dataset = iter(get_loaders(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size))
     # train_loader = iter(train_loader)
     n_bins = 2.0 ** args.n_bits
 
@@ -113,7 +113,7 @@ def train(args, model, optimizer):
     with tqdm(range(args.iter)) as pbar:
         for i in pbar:
             # todo: need to change once we have likelihood
-            image = next(train_loader)
+            image = next(dataset)
             image = image.to(device)
 
             image = image / 255.  # todo: we need to add transformations and augmentations
