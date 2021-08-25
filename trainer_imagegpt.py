@@ -120,7 +120,7 @@ def train(args, model, optimizer):
             (image, ) = batch
             image = image.to(device)
 
-            image = image / 255.  # todo: we need to add transformations and augmentations
+            # image = image / 255.  # todo: we need to add transformations and augmentations
 
             if args.n_bits < 8:
                 image = torch.floor(image / 2 ** (8 - args.n_bits))
