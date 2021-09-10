@@ -114,15 +114,16 @@ def train(args, model, optimizer):
         """
         if reverse:
             log_target = False
-            loss = F.kl_div(q, p, log_target=log_target, reduction='sum')
+            # log_target = True
+            # log_p = torch.log(p)
+            loss = F.kl_div(q, p, log_target=log_target, reduction='batchmean')
         else:
             log_target = True
             log_p = torch.log(p)
-            loss = F.kl_div(log_p, q, log_target=log_target, reduction='sum')
+            loss = F.kl_div(log_p, q, log_target=log_target, reduction='batchmean')
         return loss
 
     laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
-    # train_loader = iter(train_loader)
     n_bins = 2.0 ** args.n_bits
 
     z_sample = []
@@ -194,6 +195,8 @@ def train(args, model, optimizer):
                 if args.wandb:
                     wandb.save((sample_path / f"{str(global_iter + 1).zfill(6)}.png").as_posix())
 
+                global_iter += 1
+
         if epoch % args.model_every == 0:
             torch.save(
                 model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}.pt"
@@ -201,7 +204,6 @@ def train(args, model, optimizer):
             torch.save(
                 optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}.pt"
             )
-        global_iter += 1
 
     torch.save(
         model.state_dict(), model_path / f"model_end.pt"
