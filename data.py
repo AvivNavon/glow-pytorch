@@ -2,9 +2,11 @@ import os
 from pathlib import Path
 import logging
 
+import pickle
 import h5py
 import numpy as np
 import torch
+from sklearn.model_selection import train_test_split
 
 
 def load_h5_dataset(path: Path):
@@ -83,18 +85,34 @@ def load_datasets(path: Path, clusters_path, sample_flag=False, device=None):
     return train, test
 
 
+def load_dataset_with_kl(path, clusters_path, sample_flag=False, device=None, test_size=.2, seed=42):
+    model_table = pickle.load(open(path, "rb"))
+    train, test = train_test_split(model_table, test_size=test_size, random_state=seed)
+    train, train_likelihood = np.vstack([t[0] for t in train]), np.vstack([t[1] for t in train])
+    test, test_likelihood = np.vstack([t[0] for t in test]), np.vstack([t[1] for t in test])
+    mapping = ImageMapping(clusters_path, sample_flag=sample_flag, device=device)
+    train = mapping.map_image(train)
+    test = mapping.map_image(test)
+    return (
+        (train, torch.from_numpy(train_likelihood.astype(np.float32))),
+        (test, torch.from_numpy(test_likelihood.astype(np.float32)))
+    )
+
+
 if __name__ == '__main__':
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
     )
 
-    path = './data'
-    train, test = load_h5_dataset(Path(path))
-    logging.info(f"train shape: {train.shape}, test shape: {test.shape}")
+    # path = './data'
+    # train, test = load_h5_dataset(Path(path))
+    # logging.info(f"train shape: {train.shape}, test shape: {test.shape}")
+    #
+    # mapping = ImageMapping('./data/kmeans_centers.npy')
+    # x = mapping.map_image(test)
+    # logging.info(x.shape)
+    # logging.info(x[0])
 
-    mapping = ImageMapping('./data/kmeans_centers.npy')
-    x = mapping.map_image(test)
-    logging.info(x.shape)
-    logging.info(x[0])
-
+    train, test = load_dataset_with_kl('./data/imageGPT_Evaluation_Results_NLL.p', './data/kmeans_centers.npy')
+    print('debug')

@@ -7,13 +7,14 @@ import argparse
 
 import torch
 from torch import nn, optim
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 from torchvision import datasets, transforms, utils
 from utils import common_parser, set_seed, set_logger
 import wandb
 
 from model import Glow
-from data import load_datasets
+from data import load_dataset_with_kl
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -32,6 +33,9 @@ parser.add_argument(
 parser.add_argument(
     "--affine", action="store_true", help="use affine coupling instead of additive"
 )
+parser.add_argument(
+    '--loss', default='kl', type=str, choices=['kl', 'reverse-kl'], help="KL type for loss: ['kl', 'reverse-kl']"
+)
 parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
 parser.add_argument("--samples-every", default=500, type=int, help="samples every")
 parser.add_argument("--model-every", default=50000, type=int, help="model every")
@@ -41,16 +45,17 @@ parser.add_argument("--workers", default=0, type=int, help="num workers")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
 parser.add_argument("--n_sample", default=20, type=int, help="number of samples")
 parser.add_argument("--sample-path", type=str, default='samples', help="Path to image directory")
-parser.add_argument("--path", default='data', type=Path, help="Path to image directory")
-parser.add_argument("--path-to-clusters", type=Path, help="Path to image directory", default='data')
+parser.add_argument("--path", default='./data/imageGPT_Evaluation_Results_NLL.p', type=Path, help="Path to image directory")
+parser.add_argument("--path-to-clusters", type=Path, help="Path to image directory", default='./data/kmeans_centers.npy')
+parser.add_argument('--model-path', default='checkpoint', type=Path)
 parser.add_argument("--seed", default=42, type=int, help="random seed")
 
 
 def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=16):
     # todo: refactor
     # todo: we need to add augmentations like in train.py
-    train, test = load_datasets(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
-    dataset = TensorDataset(train)
+    train, test = load_dataset_with_kl(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
+    dataset = TensorDataset(*train)
 
     loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=args.workers)
 
@@ -72,23 +77,49 @@ def calc_z_shapes(n_channel, input_size, n_flow, n_block):
     return z_shapes
 
 
-def calc_loss(log_p, logdet, image_size, n_bins):
-    # log_p = calc_log_p([z_list])
-    n_pixel = image_size * image_size * 3
-
-    loss = -log(n_bins) * n_pixel
-    loss = loss + logdet + log_p
-
-    return (
-        (-loss / (log(2) * n_pixel)).mean(),
-        (log_p / (log(2) * n_pixel)).mean(),
-        (logdet / (log(2) * n_pixel)).mean(),
-    )
+# def calc_loss(log_p, logdet, image_size, n_bins):
+#     # todo: use nn.KLDivLoss
+#
+#     # log_p = calc_log_p([z_list])
+#     n_pixel = image_size * image_size * 3
+#
+#     loss = -log(n_bins) * n_pixel
+#     loss = loss + logdet + log_p
+#
+#     return (
+#         (-loss / (log(2) * n_pixel)).mean(),
+#         (log_p / (log(2) * n_pixel)).mean(),
+#         (logdet / (log(2) * n_pixel)).mean(),
+#     )
 
 
 def train(args, model, optimizer):
     sample_path = Path(args.sample_path)
     sample_path.mkdir(exist_ok=True, parents=True)
+
+    model_path = args.model_path / f'{args.loss}'
+    model_path.mkdir(exist_ok=True, parents=True)
+
+    # loss
+    reverse_kl = args.loss == 'reverse-kl'
+
+    def calc_loss(p, q, reverse=False):
+        """
+
+        :param p: data likelihood
+        :param q: model log-likelihood
+        :param reverse: bool. Whether to use KL or reverse KL.
+
+        :return: loss
+        """
+        if reverse:
+            log_target = False
+            loss = F.kl_div(q, p, log_target=log_target, reduction='sum')
+        else:
+            log_target = True
+            log_p = torch.log(p)
+            loss = F.kl_div(log_p, q, log_target=log_target, reduction='sum')
+        return loss
 
     laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
     # train_loader = iter(train_loader)
@@ -105,8 +136,7 @@ def train(args, model, optimizer):
     for epoch in pbar:
         for _, batch in enumerate(laoder):
             # todo: need to change once we have likelihood
-            (image, ) = batch
-            image = image.to(device)
+            (image, likelihood) = (t.to(device) for t in batch)
 
             # image = image / 255.  # todo: we need to add transformations and augmentations
 
@@ -126,9 +156,13 @@ def train(args, model, optimizer):
             else:
                 log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)
 
+            # loss and metrics
+            loss = calc_loss(p=likelihood.squeeze(), q=log_p, reverse=reverse_kl)
             logdet = logdet.mean()
-
-            loss, log_p, log_det = calc_loss(log_p, logdet, args.img_size, n_bins)
+            n_pixel = args.img_size * args.img_size * 3
+            log_p = (log_p / (log(2) * n_pixel)).mean()
+            log_det = (logdet / (log(2) * n_pixel)).mean()
+            # loss, log_p, log_det = calc_loss(log_p, logdet, args.img_size, n_bins)
             model.zero_grad()
             loss.backward()
             # warmup_lr = args.lr * min(1, i * batch_size / (50000 * 10))
@@ -160,14 +194,21 @@ def train(args, model, optimizer):
                 if args.wandb:
                     wandb.save((sample_path / f"{str(global_iter + 1).zfill(6)}.png").as_posix())
 
-            if global_iter % args.model_every == 0:
-                torch.save(
-                    model.state_dict(), f"checkpoint/model_{str(global_iter + 1).zfill(6)}.pt"
-                )
-                torch.save(
-                    optimizer.state_dict(), f"checkpoint/optim_{str(global_iter + 1).zfill(6)}.pt"
-                )
-            global_iter += 1
+        if epoch % args.model_every == 0:
+            torch.save(
+                model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}.pt"
+            )
+            torch.save(
+                optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}.pt"
+            )
+        global_iter += 1
+
+    torch.save(
+        model.state_dict(), model_path / f"model_end.pt"
+    )
+    torch.save(
+        optimizer.state_dict(), model_path / f"optim_end.pt"
+    )
 
 
 if __name__ == "__main__":
@@ -186,7 +227,7 @@ if __name__ == "__main__":
     set_seed(args.seed)
     # wandb
     if args.wandb:
-        name = f"glow_imagegpt_lr_{args.lr}_bs_{args.batch_size}_no_LU_{args.no_lu}_seed_{args.seed}"
+        name = f"glow_imagegpt_KL_lr_{args.lr}_bs_{args.batch_size}_no_LU_{args.no_lu}_seed_{args.seed}"
         wandb.init(project="glow", entity='avivnav', name=name)
         wandb.config.update(args)
 
