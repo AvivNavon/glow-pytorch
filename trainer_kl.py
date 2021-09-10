@@ -195,7 +195,7 @@ def train(args, model, optimizer):
                 if args.wandb:
                     wandb.save((sample_path / f"{str(global_iter + 1).zfill(6)}.png").as_posix())
 
-                global_iter += 1
+            global_iter += 1
 
         if epoch % args.model_every == 0:
             torch.save(
