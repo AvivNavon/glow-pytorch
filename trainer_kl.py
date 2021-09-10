@@ -102,25 +102,29 @@ def train(args, model, optimizer):
 
     # loss
     reverse_kl = args.loss == 'reverse-kl'
+    n_pixel = args.img_size * args.img_size * 3
 
-    def calc_loss(p, q, reverse=False):
+    def calc_loss(p, q, logdet, reverse=False):
         """
 
         :param p: data likelihood
-        :param q: model log-likelihood
+        :param q: log q (model)
         :param reverse: bool. Whether to use KL or reverse KL.
 
         :return: loss
         """
+
+        log_probs_q = logdet + q
+
         if reverse:
-            log_target = False
+            # log_target = False
+            # loss = F.kl_div(log_probs_q, p, log_target=log_target, reduction='batchmean')
+            raise NotImplemented
+        else:
             # log_target = True
             # log_p = torch.log(p)
-            loss = F.kl_div(q, p, log_target=log_target, reduction='batchmean')
-        else:
-            log_target = True
-            log_p = torch.log(p)
-            loss = F.kl_div(log_p, q, log_target=log_target, reduction='batchmean')
+            # loss = F.kl_div(log_p, log_probs_q, log_target=log_target, reduction='batchmean')
+            loss = F.kl_div(log_probs_q, p, reduction='batchmean')
         return loss
 
     laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
@@ -158,9 +162,8 @@ def train(args, model, optimizer):
                 log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)
 
             # loss and metrics
-            loss = calc_loss(p=likelihood.squeeze(), q=log_p, reverse=reverse_kl)
             logdet = logdet.mean()
-            n_pixel = args.img_size * args.img_size * 3
+            loss = calc_loss(p=likelihood.squeeze(), q=log_p, logdet=logdet, reverse=reverse_kl)
             log_p = (log_p / (log(2) * n_pixel)).mean()
             log_det = (logdet / (log(2) * n_pixel)).mean()
             # loss, log_p, log_det = calc_loss(log_p, logdet, args.img_size, n_bins)
