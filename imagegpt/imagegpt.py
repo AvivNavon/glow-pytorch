@@ -17,7 +17,7 @@ class ImageGPT:
             color_cluster_path="../artifacts/kmeans_centers.npy"
     ):
         self.hps = HParams(
-            n_ctx=32*32,
+            n_ctx=32*32,  # todo: pass image size
             n_embd=512,
             n_head=8,
             n_layer=24,
@@ -62,7 +62,7 @@ class ImageGPT:
         return d
 
     def _color_quantize(self, x, np_clusters):
-        x = np.reshape(x, [32, -1, 3])
+        x = np.reshape(x, [x.shape[0], -1, 3])
         d = self.squared_euclidean_distance(x, np_clusters)
         return np.argmin(d, 2)
 
