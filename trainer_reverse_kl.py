@@ -97,7 +97,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     def calc_loss(p, q, logdet):
         """Reverse KL
 
-        :param p: data likelihood
+        :param p: data log likelihood
         :param q: log q (model)
         :param logdet: log determinant
 
