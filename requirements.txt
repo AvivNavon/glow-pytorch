@@ -1,0 +1,9 @@
+torch
+h5py
+tqdm
+wandb
+scipy
+scikit-learn
+#tensorflow-gpu==1.15
+imageio==2.8.0
+requests==2.21.0
