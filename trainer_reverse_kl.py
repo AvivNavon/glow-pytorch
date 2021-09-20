@@ -55,7 +55,7 @@ parser.add_argument('--model-path', default='checkpoint', type=Path)
 parser.add_argument("--seed", default=42, type=int, help="random seed")
 # image gpt
 parser.add_argument('--n-gpu', default=1, type=int)
-parser.add_argument("--tf-device", nargs="+", default=[0], help="GPU devices for tf")
+parser.add_argument("--tf-device", nargs="+", type=int, default=[0], help="GPU devices for tf")
 parser.add_argument('--imagegpt-artifact', default='../image-gpt/artifacts', type=Path)
 
 
