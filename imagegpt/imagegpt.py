@@ -39,7 +39,7 @@ class ImageGPT:
         y = tf.split(self.Y, n_gpu, 0)
 
         self.trainable_params, self.gen_logits, self.gen_loss, self.clf_loss, self.tot_loss, self.accuracy = \
-            self.create_model(x, y, n_gpu, self.hps)
+            self.create_model(x, y, devices=self.devices, hparams=self.hps)
         # self.reduce_mean(self.gen_loss, self.clf_loss, self.tot_loss, self.accuracy, n_gpu)
 
         self.saver = tf.train.Saver(var_list=[tp for tp in self.trainable_params if not 'clf' in tp.name])
