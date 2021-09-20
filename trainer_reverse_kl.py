@@ -107,7 +107,12 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         log_probs_q = logdet + q
         # todo: maybe need to switch order maybe? maybe we should calc explicitly
         # loss = F.kl_div(log_probs_q, p, log_target=True, reduction='batchmean')
-        loss = F.kl_div(p, log_probs_q, log_target=True, reduction='batchmean')
+        # loss = F.kl_div(p, log_probs_q, log_target=True, reduction='batchmean')
+
+        loss = (
+                log_probs_q -  # log likelihood model (Glow)
+                p  # log likelihood data
+        )
 
         return loss
 
