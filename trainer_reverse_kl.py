@@ -131,7 +131,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     global_iter = 0
     for i in pbar:
         batch = gen_batch()
-        sampled_images = model.reverse(batch)
+        sampled_images = model_single.reverse(batch)
 
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
