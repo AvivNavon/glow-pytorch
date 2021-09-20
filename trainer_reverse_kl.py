@@ -114,7 +114,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                 p  # log likelihood data
         )
 
-        return loss
+        return loss.mean()
 
     laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
     n_bins = 2.0 ** args.n_bits
