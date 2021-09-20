@@ -56,6 +56,7 @@ parser.add_argument("--seed", default=42, type=int, help="random seed")
 # image gpt
 parser.add_argument('--n-gpu', default=1, type=int)
 parser.add_argument("--tf-device", nargs="+", type=int, default=[0], help="GPU devices for tf")
+parser.add_argument("--pt-device", nargs="+", type=int, default=[0], help="GPU devices for pt")
 parser.add_argument('--imagegpt-artifact', default='../image-gpt/artifacts', type=Path)
 
 
@@ -130,7 +131,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     global_iter = 0
     for i in pbar:
         batch = gen_batch()
-        sampled_images = model_single.reverse(batch)
+        sampled_images = model.reverse(batch)
 
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
@@ -224,7 +225,7 @@ if __name__ == "__main__":
     model_single = Glow(
         3, args.n_flow, args.n_block, affine=args.affine, conv_lu=not args.no_lu
     )
-    model = nn.DataParallel(model_single)
+    model = nn.DataParallel(model_single, device_ids=args.pt_device)
     model = model.to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
