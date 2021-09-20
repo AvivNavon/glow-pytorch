@@ -20,8 +20,6 @@ from data import load_dataset_with_kl
 
 from imagegpt.imagegpt import ImageGPT
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
 parser = argparse.ArgumentParser(description="Glow trainer", parents=[common_parser])
 parser.add_argument("--batch-size", default=32, type=int, help="batch size")
 parser.add_argument("--iters", default=50000, type=int, help="number of training iterations")
@@ -185,15 +183,26 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
         if global_iter % args.samples_every == 0:
             with torch.no_grad():
+
                 z_sample = gen_batch(batch_size=args.n_sample)
-                utils.save_image(
-                    model_single.reverse(z_sample).cpu().data,
-                    sample_path / f"{str(global_iter + 1).zfill(6)}.png",
-                    normalize=True,
-                    nrow=10,
-                    # range=(-0.5, 0.5),
-                    value_range=(-0.5, 0.5),
-                    )
+                try:
+                    utils.save_image(
+                        model_single.reverse(z_sample).cpu().data,
+                        sample_path / f"{str(global_iter + 1).zfill(6)}.png",
+                        normalize=True,
+                        nrow=10,
+                        # range=(-0.5, 0.5),
+                        value_range=(-0.5, 0.5),
+                        )
+                except:
+                    utils.save_image(
+                        model_single.reverse(z_sample).cpu().data,
+                        sample_path / f"{str(global_iter + 1).zfill(6)}.png",
+                        normalize=True,
+                        nrow=10,
+                        range=(-0.5, 0.5),
+                        # value_range=(-0.5, 0.5),
+                        )
             if args.wandb:
                 wandb.save((sample_path / f"{str(global_iter + 1).zfill(6)}.png").as_posix())
 
@@ -220,6 +229,8 @@ if __name__ == "__main__":
     set_logger()
     # set seed
     set_seed(args.seed)
+
+    device = torch.device(f"cuda:{args.pt_device[0]}" if torch.cuda.is_available() else "cpu")
 
     # Glow
     model_single = Glow(
