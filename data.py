@@ -48,7 +48,7 @@ class ImageMapping:
         self.device = device
 
     def map_image(self, x):
-        x = torch.from_numpy(x).to(self.device)
+        x = torch.from_numpy(x)  # .to(self.device)
         x = torch.round(127.5 * (self.clusters[x.long()] + 1.0))
 
         # Training --> x.shape = torch.Size([128, 1024, 3])
