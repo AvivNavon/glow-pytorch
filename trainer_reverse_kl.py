@@ -55,6 +55,7 @@ parser.add_argument('--model-path', default='checkpoint', type=Path)
 parser.add_argument("--seed", default=42, type=int, help="random seed")
 # image gpt
 parser.add_argument('--n-gpu', default=1, type=int)
+parser.add_argument("--tf-device", nargs="+", default=[0], help="GPU devices for tf")
 parser.add_argument('--imagegpt-artifact', default='../image-gpt/artifacts', type=Path)
 
 
@@ -94,24 +95,21 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     # loss
     n_pixel = args.img_size * args.img_size * 3
 
-    def calc_loss(p, q, logdet):
+    def calc_loss(log_p, log_q, logdet):
         """Reverse KL
 
-        :param p: data log likelihood
-        :param q: log q (model)
+        :param log_p: data log likelihood
+        :param log_q: log q (model)
         :param logdet: log determinant
 
         :return: loss
         """
 
-        log_probs_q = logdet + q
-        # todo: maybe need to switch order maybe? maybe we should calc explicitly
-        # loss = F.kl_div(log_probs_q, p, log_target=True, reduction='batchmean')
-        # loss = F.kl_div(p, log_probs_q, log_target=True, reduction='batchmean')
+        log_probs_q = logdet + log_q
 
         loss = (
                 log_probs_q -  # log likelihood model (Glow)
-                p  # log likelihood data
+                log_p  # log likelihood data
         )
 
         return loss.mean()
@@ -161,7 +159,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         # loss and metrics
         logdet = logdet.mean()
         data_log_likelihood = -torch.from_numpy(np.concatenate(nll)).to(device)
-        loss = calc_loss(p=data_log_likelihood, q=log_p, logdet=logdet)
+        loss = calc_loss(log_p=data_log_likelihood, log_q=log_p, logdet=logdet)
         log_p = (log_p / (log(2) * n_pixel)).mean()
         log_det = (logdet / (log(2) * n_pixel)).mean()
         nll = np.concatenate(nll).mean()
@@ -235,7 +233,7 @@ if __name__ == "__main__":
     artifacts_path = args.imagegpt_artifact
     image_gpt = ImageGPT(
         batch_size=args.batch_size,
-        n_gpu=args.n_gpu,
+        devices=args.tf_device,
         ckpt_path=(artifacts_path / "model.ckpt-1000000").as_posix(),
         color_cluster_path=(artifacts_path / "kmeans_centers.npy").as_posix(),
     )

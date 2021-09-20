@@ -11,7 +11,8 @@ class ImageGPT:
     def __init__(
             self,
             batch_size,
-            n_gpu=1,
+            devices: list,
+            # n_gpu=1,
             n_class=10,
             ckpt_path="../artifacts/model.ckpt-1000000",
             color_cluster_path="../artifacts/kmeans_centers.npy"
@@ -26,6 +27,9 @@ class ImageGPT:
             bert_mask_prob=0.15,
             clf=False,
         )
+        n_gpu = len(devices)
+        self.devices = devices
+
         self.clusters = np.load(color_cluster_path)
 
         self.X = tf.placeholder(tf.int32, [batch_size, self.hps.n_ctx])
@@ -86,7 +90,7 @@ class ImageGPT:
             accuracy[0] /= n_gpu
 
     @staticmethod
-    def create_model(x, y, n_gpu, hparams):
+    def create_model(x, y, devices, hparams):
         gen_logits = []
         gen_loss = []
         clf_loss = []
@@ -94,8 +98,8 @@ class ImageGPT:
         accuracy = []
 
         trainable_params = None
-        for i in range(n_gpu):
-            with tf.device("/gpu:%d" % i):
+        for i, device in enumerate(devices):
+            with tf.device("/gpu:%d" % device):
                 results = model(hparams, x[i], y[i], reuse=(i != 0))
 
                 gen_logits.append(results["gen_logits"])
@@ -118,7 +122,7 @@ class ImageGPT:
 
 if __name__ == "__main__":
     bs = 32
-    image_gpt = ImageGPT(batch_size=bs)
+    image_gpt = ImageGPT(batch_size=bs, devices=[0])
     x_test = np.load("../artifacts/cifar10_teX.npy")
     # x = x_test[:bs]
     for i in range(5):
