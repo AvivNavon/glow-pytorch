@@ -125,6 +125,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         sampled_images, reverse_logdet = model.module.reverse(batch)
         # todo: how to calc. log probs?
         log_p = sum(log_probs)
+        log_p = log_p.to(device)
         sampled_images = sampled_images / (sampled_images.abs().max() * 2.)  # approx. (-.5, .5)
 
         # pass through image gpt
