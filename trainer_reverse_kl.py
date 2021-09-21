@@ -47,7 +47,7 @@ parser.add_argument("--workers", default=0, type=int, help="num workers")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
 parser.add_argument("--n_sample", default=20, type=int, help="number of samples")
 parser.add_argument("--sample-path", type=str, default='samples', help="Path to image directory")
-parser.add_argument("--path", default='./data/imageGPT_Evaluation_Results_NLL.p', type=Path, help="Path to image directory")
+# parser.add_argument("--path", default='./data/imageGPT_Evaluation_Results_NLL.p', type=Path, help="Path to image directory")
 parser.add_argument("--path-to-clusters", type=Path, help="Path to image directory", default='./data/kmeans_centers.npy')
 parser.add_argument('--model-path', default='checkpoint', type=Path)
 parser.add_argument("--seed", default=42, type=int, help="random seed")
@@ -56,17 +56,6 @@ parser.add_argument('--n-gpu', default=1, type=int)
 parser.add_argument("--tf-device", nargs="+", type=int, default=[0], help="GPU devices for tf")
 parser.add_argument("--pt-device", nargs="+", type=int, default=[0], help="GPU devices for pt")
 parser.add_argument('--imagegpt-artifact', default='../image-gpt/artifacts', type=Path)
-
-
-# def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=16):
-#     # todo: refactor
-#     # todo: we need to add augmentations like in train.py
-#     train, test = load_dataset_with_kl(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
-#     dataset = TensorDataset(*train)
-#
-#     loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=args.workers)
-#
-#     return loader
 
 
 def calc_z_shapes(n_channel, input_size, n_flow, n_block):
@@ -113,7 +102,6 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
         return loss.mean()
 
-    # laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
     n_bins = 2.0 ** args.n_bits
 
     def gen_batch(batch_size=args.batch_size):
