@@ -42,6 +42,7 @@ parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
 parser.add_argument("--samples-every", default=250, type=int, help="samples every")
 parser.add_argument("--model-every", default=500000, type=int, help="model every")
 parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
+parser.add_argument("--model-ll-clamp", default=-np.inf, type=float, help="model log likelihood clamp")
 parser.add_argument("--img_size", default=32, type=int, help="image size")
 parser.add_argument("--workers", default=0, type=int, help="num workers")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
@@ -93,6 +94,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         """
 
         log_probs_q = (logdet + log_q) / n_pixel  # the original likelihood is sum over pixels, so we change to mean
+        log_probs_q = log_probs_q.clamp(min=args.model_ll_clamp)
 
         loss = (
                 log_probs_q -  # log likelihood model (Glow)
@@ -126,9 +128,9 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
-        # NOTE: expect channels last and single image
+        # NOTE: expect channels last
         clustered_sampled_images = image_gpt.color_quantize(sampled_images_numpy)
-        nll = image_gpt.eval_model(clustered_sampled_images)
+        data_nll = image_gpt.eval_model(clustered_sampled_images)
 
         # pass through Glow
         # sampled_images = sampled_images.to(device)
@@ -150,11 +152,12 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
         # loss and metrics
         logdet = logdet.mean()
-        data_log_likelihood = -torch.from_numpy(np.concatenate(nll)).to(device)
+        data_log_likelihood = -torch.from_numpy(np.concatenate(data_nll)).to(device)
         loss = calc_loss(log_p=data_log_likelihood, log_q=log_p, logdet=logdet)
+        model_ll = ((log_p + logdet) / n_pixel).mean()
         log_p = (log_p / (log(2) * n_pixel)).mean()
         log_det = (logdet / (log(2) * n_pixel)).mean()
-        nll = np.concatenate(nll).mean()
+        data_nll = np.concatenate(data_nll).mean()
         model.zero_grad()
         loss.backward()
         # warmup_lr = args.lr * min(1, i * batch_size / (50000 * 10))
@@ -163,13 +166,14 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         optimizer.step()
 
         pbar.set_description(
-            f"Loss: {loss.item():.5f}; data NLL: {nll:.5f}; logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
+            f"Loss: {loss.item():.5f}; data LL: {-data_nll:.5f};  model ll {model_ll.item():.5f}; logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
         )
 
         if args.wandb:
             wandb.log({
                 'loss': loss.item(),
-                'data_nll': nll,
+                'data_ll': -data_nll,
+                'model_ll': model_ll.item(),
                 'logP': log_p.item(),
                 'logdet': log_det.item()
             })
