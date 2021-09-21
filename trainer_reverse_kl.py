@@ -130,6 +130,10 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
         # NOTE: expect channels last
+        # clusters are in (-1, 1)
+        # todo: maybe do this on Glow model's output? some other transformation?
+        sampled_images_numpy = (sampled_images_numpy / 255) - .5  # (-.5, .5)
+        sampled_images_numpy = sampled_images_numpy * 1.  # (-.1, .1)
         clustered_sampled_images = image_gpt.color_quantize(sampled_images_numpy)
         data_nll = image_gpt.eval_model(clustered_sampled_images)
 
