@@ -122,7 +122,7 @@ class ImageGPT:
 
 if __name__ == "__main__":
     bs = 32
-    image_gpt = ImageGPT(batch_size=bs, devices=[0], ckpt_path='../../image-gpt/artifacts/model.ckpt-1000000', color_cluster_path='../../image-gpt/artifacts/kmeans_centers.npy')
+    image_gpt = ImageGPT(batch_size=bs, devices=[0], ckpt_path='../image-gpt/artifacts/model.ckpt-1000000', color_cluster_path='../image-gpt/artifacts/kmeans_centers.npy')
     # x_test = np.load("../../image-gpt/artifacts/cifar10_teX.npy")
     # # x = x_test[:bs]
     # for i in range(5):

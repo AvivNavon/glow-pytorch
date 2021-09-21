@@ -120,29 +120,35 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     for i in pbar:
         batch = gen_batch()
         sampled_images = model.module.reverse(batch)
-        # map to (0, 255)
+        # map to (-.5, .5)
         # todo: not sure what's the right transformation here
-        max_abs_val = .5
-        sampled_images = torch.clamp(sampled_images, -max_abs_val, max_abs_val)  # (-max_abs_val, max_abs_val)
-        sampled_images = (sampled_images + max_abs_val) / (2. * max_abs_val)  # (0, 1)
-        sampled_images = sampled_images * 255  # (0, 255)
+        # # map to (0, 255)
+        # max_abs_val = .5
+        # sampled_images = torch.clamp(sampled_images, -max_abs_val, max_abs_val)  # (-max_abs_val, max_abs_val)
+        # sampled_images = (sampled_images + max_abs_val) / (2. * max_abs_val)  # (0, 1)
+        # sampled_images = sampled_images * 255  # (0, 255)
+
+        sampled_images = sampled_images / (sampled_images.abs().max() * 2.)  # approx. (-.5, .5)
 
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
         # NOTE: expect channels last
         # clusters are in (-1, 1)
         # todo: maybe do this on Glow model's output? some other transformation?
-        sampled_images_numpy = (sampled_images_numpy / 255) - .5  # (-.5, .5)
-        sampled_images_numpy = sampled_images_numpy * 2.  # (-.1, .1)
+        sampled_images_numpy = sampled_images_numpy * 2.  # (-1, 1)
+
+        # sampled_images_numpy = (sampled_images_numpy / 255) - .5  # (-.5, .5)
+        # sampled_images_numpy = sampled_images_numpy * 2.  # (-.1, .1)
+
         clustered_sampled_images = image_gpt.color_quantize(sampled_images_numpy)
         data_nll = image_gpt.eval_model(clustered_sampled_images)
 
-        # pass through Glow
-        # sampled_images = sampled_images.to(device)
-        if args.n_bits < 8:
-            sampled_images = torch.floor(sampled_images / 2 ** (8 - args.n_bits))
-
-        sampled_images = sampled_images / n_bins - 0.5
+        # # pass through Glow
+        # # sampled_images = sampled_images.to(device)
+        # if args.n_bits < 8:
+        #     sampled_images = torch.floor(sampled_images / 2 ** (8 - args.n_bits))
+        #
+        # sampled_images = sampled_images / n_bins - 0.5
         # todo: why do we need that?
         if global_iter == 0:
             with torch.no_grad():
