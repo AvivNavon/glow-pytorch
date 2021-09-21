@@ -123,13 +123,14 @@ class ImageGPT:
 if __name__ == "__main__":
     bs = 32
     image_gpt = ImageGPT(batch_size=bs, devices=[0], ckpt_path='../../image-gpt/artifacts/model.ckpt-1000000', color_cluster_path='../../image-gpt/artifacts/kmeans_centers.npy')
-    x_test = np.load("../../image-gpt/artifacts/cifar10_teX.npy")
+    # x_test = np.load("../../image-gpt/artifacts/cifar10_teX.npy")
     # # x = x_test[:bs]
     # for i in range(5):
     #     print(i)
     #     out = image_gpt.eval_model(x_test[i*bs:(i+1)*bs])
 
     X = np.random.randint(0, 255, size=bs*32*32*3).reshape((bs, 32, 32, 3))
+    X = ((X / 255.) - .5) * 2.
     X = image_gpt.color_quantize(X)
     out = image_gpt.eval_model(X)
     print('debug')
