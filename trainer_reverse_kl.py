@@ -92,8 +92,8 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
         :return: loss
         """
-
-        log_probs_q = (logdet + log_q) / n_pixel  # the original likelihood is sum over pixels, so we change to mean
+        # the original likelihood is sum over pixels, so we change to mean
+        log_probs_q = (logdet + log_q - log(n_bins) * n_pixel) / (n_pixel * log(2))
         log_probs_q = log_probs_q.clamp(min=args.model_ll_clamp)
 
         loss = (
@@ -166,7 +166,8 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         optimizer.step()
 
         pbar.set_description(
-            f"Loss: {loss.item():.5f}; data LL: {-data_nll:.5f};  model ll {model_ll.item():.5f}; logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
+            f"Loss: {loss.item():.5f}; data LL: {-data_nll:.5f};  model LL: {model_ll.item():.5f}; "
+            f"logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
         )
 
         if args.wandb:
