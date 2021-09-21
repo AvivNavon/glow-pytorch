@@ -21,7 +21,7 @@ from data import load_dataset_with_kl
 from imagegpt.imagegpt import ImageGPT
 
 parser = argparse.ArgumentParser(description="Glow trainer", parents=[common_parser])
-parser.add_argument("--batch-size", default=32, type=int, help="batch size")
+parser.add_argument("--batch-size", default=16, type=int, help="batch size")
 parser.add_argument("--iters", default=50000, type=int, help="number of training iterations")
 parser.add_argument(
     "--n_flow", default=32, type=int, help="number of flows in each block"
@@ -117,6 +117,12 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     for i in pbar:
         batch = gen_batch()
         sampled_images = model.module.reverse(batch)
+        # map to (0, 255)
+        # todo: not sure what's the right transformation here
+        max_abs_val = .5
+        sampled_images = torch.clamp(sampled_images, -max_abs_val, max_abs_val)  # (-max_abs_val, max_abs_val)
+        sampled_images = (sampled_images + max_abs_val) / (2. * max_abs_val)  # (0, 1)
+        sampled_images = sampled_images * 255  # (0, 255)
 
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
