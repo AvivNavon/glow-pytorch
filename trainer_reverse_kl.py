@@ -43,6 +43,7 @@ parser.add_argument("--samples-every", default=250, type=int, help="samples ever
 parser.add_argument("--model-every", default=500000, type=int, help="model every")
 parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
 parser.add_argument("--model-ll-clamp", default=-np.inf, type=float, help="model log likelihood clamp")
+parser.add_argument("--clip", default=100, type=float, help="grad clipping")
 parser.add_argument("--img_size", default=32, type=int, help="image size")
 parser.add_argument("--workers", default=0, type=int, help="num workers")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
@@ -163,6 +164,8 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         # warmup_lr = args.lr * min(1, i * batch_size / (50000 * 10))
         warmup_lr = args.lr
         optimizer.param_groups[0]["lr"] = warmup_lr
+        # clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
         optimizer.step()
 
         pbar.set_description(
