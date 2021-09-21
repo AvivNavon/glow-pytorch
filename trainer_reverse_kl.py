@@ -138,7 +138,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         data_nll = image_gpt.eval_model(clustered_sampled_images)
 
         # loss and metrics
-        logdet = logdet.mean()
+        logdet = reverse_logdet.mean()  # todo: verify
         data_log_likelihood = -torch.from_numpy(np.concatenate(data_nll)).to(device)
         loss = calc_loss(log_p=data_log_likelihood, log_q=log_p, logdet=logdet)
         model_ll = ((log_p + logdet) / n_pixel).mean()
