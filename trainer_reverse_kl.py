@@ -92,7 +92,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         :return: loss
         """
 
-        log_probs_q = logdet + log_q
+        log_probs_q = (logdet + log_q) / n_pixel  # the original likelihood is sum over pixels, so we change to mean
 
         loss = (
                 log_probs_q -  # log likelihood model (Glow)
