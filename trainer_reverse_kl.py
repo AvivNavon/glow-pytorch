@@ -107,27 +107,24 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     n_bins = 2.0 ** args.n_bits
 
     def gen_batch(batch_size=args.batch_size):
+        normal = torch.distributions.normal.Normal(loc=0., scale=args.temp)
         z_sample = []
         z_shapes = calc_z_shapes(3, args.img_size, args.n_flow, args.n_block)
+        log_probs = []
         for z in z_shapes:
             z_new = torch.randn(batch_size, *z) * args.temp
             z_sample.append(z_new.to(device))
-        return z_sample
+            log_probs.append(normal.log_prob(z_new).sum((1, 2, 3)))
+        return z_sample, log_probs
 
     pbar = trange(args.iters)
 
     global_iter = 0
     for i in pbar:
-        batch = gen_batch()
-        sampled_images = model.module.reverse(batch)
-        # map to (-.5, .5)
-        # todo: not sure what's the right transformation here
-        # # map to (0, 255)
-        # max_abs_val = .5
-        # sampled_images = torch.clamp(sampled_images, -max_abs_val, max_abs_val)  # (-max_abs_val, max_abs_val)
-        # sampled_images = (sampled_images + max_abs_val) / (2. * max_abs_val)  # (0, 1)
-        # sampled_images = sampled_images * 255  # (0, 255)
-
+        batch, log_probs = gen_batch()
+        sampled_images, reverse_logdet = model.module.reverse(batch)
+        # todo: how to calc. log probs?
+        log_p = sum(log_probs)
         sampled_images = sampled_images / (sampled_images.abs().max() * 2.)  # approx. (-.5, .5)
 
         # pass through image gpt
@@ -137,29 +134,8 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         # todo: maybe do this on Glow model's output? some other transformation?
         sampled_images_numpy = sampled_images_numpy * 2.  # (-1, 1)
 
-        # sampled_images_numpy = (sampled_images_numpy / 255) - .5  # (-.5, .5)
-        # sampled_images_numpy = sampled_images_numpy * 2.  # (-.1, .1)
-
         clustered_sampled_images = image_gpt.color_quantize(sampled_images_numpy)
         data_nll = image_gpt.eval_model(clustered_sampled_images)
-
-        # # pass through Glow
-        # # sampled_images = sampled_images.to(device)
-        # if args.n_bits < 8:
-        #     sampled_images = torch.floor(sampled_images / 2 ** (8 - args.n_bits))
-        #
-        # sampled_images = sampled_images / n_bins - 0.5
-        # todo: why do we need that?
-        if global_iter == 0:
-            with torch.no_grad():
-                log_p, logdet, _ = model.module(
-                    sampled_images + torch.rand_like(sampled_images) / n_bins
-                )
-                global_iter += 1
-                continue
-
-        else:
-            log_p, logdet, _ = model(sampled_images + torch.rand_like(sampled_images) / n_bins)
 
         # loss and metrics
         logdet = logdet.mean()
@@ -195,10 +171,10 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         if global_iter % args.samples_every == 0:
             with torch.no_grad():
 
-                z_sample = gen_batch(batch_size=args.n_sample)
+                z_sample, _ = gen_batch(batch_size=args.n_sample)
                 try:
                     utils.save_image(
-                        model_single.reverse(z_sample).cpu().data,
+                        model_single.reverse(z_sample)[0].cpu().data,
                         sample_path / f"{str(global_iter + 1).zfill(6)}.png",
                         normalize=True,
                         nrow=10,
@@ -207,7 +183,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                         )
                 except:
                     utils.save_image(
-                        model_single.reverse(z_sample).cpu().data,
+                        model_single.reverse(z_sample)[0].cpu().data,
                         sample_path / f"{str(global_iter + 1).zfill(6)}.png",
                         normalize=True,
                         nrow=10,
@@ -245,7 +221,7 @@ if __name__ == "__main__":
 
     # Glow
     model_single = Glow(
-        3, args.n_flow, args.n_block, affine=args.affine, conv_lu=not args.no_lu
+        3, args.n_flow, args.n_block, affine=args.affine, conv_lu=not args.no_lu, reverse_log_det=True
     )
     model = nn.DataParallel(model_single, device_ids=args.pt_device)
     model = model.to(device)

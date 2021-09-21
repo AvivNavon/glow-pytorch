@@ -9,7 +9,7 @@ logabs = lambda x: torch.log(torch.abs(x))
 
 
 class ActNorm(nn.Module):
-    def __init__(self, in_channel, logdet=True):
+    def __init__(self, in_channel, logdet=True, reverse_log_det=False):
         super().__init__()
 
         self.loc = nn.Parameter(torch.zeros(1, in_channel, 1, 1))
@@ -17,6 +17,7 @@ class ActNorm(nn.Module):
 
         self.register_buffer("initialized", torch.tensor(0, dtype=torch.uint8))
         self.logdet = logdet
+        self.reverse_log_det = reverse_log_det
 
     def initialize(self, input):
         with torch.no_grad():
@@ -57,11 +58,18 @@ class ActNorm(nn.Module):
             return self.scale * (input + self.loc)
 
     def reverse(self, output):
-        return output / self.scale - self.loc
+        # NOTE: for log det
+        _, _, height, width = output.shape
+        log_abs = logabs(self.scale)
+        logdet = height * width * torch.sum(log_abs)
+        if self.reverse_log_det:
+            return output / self.scale - self.loc, logdet
+        else:
+            return output / self.scale - self.loc
 
 
 class InvConv2d(nn.Module):
-    def __init__(self, in_channel):
+    def __init__(self, in_channel, reverse_log_det=False):
         super().__init__()
 
         weight = torch.randn(in_channel, in_channel)
@@ -80,13 +88,21 @@ class InvConv2d(nn.Module):
         return out, logdet
 
     def reverse(self, output):
-        return F.conv2d(
+        out = F.conv2d(
             output, self.weight.squeeze().inverse().unsqueeze(2).unsqueeze(3)
         )
+        if self.reverse_log_det:
+            _, _, height, width = out.shape
+            logdet = (
+                    height * width * torch.slogdet(self.weight.squeeze().double())[1].float()
+            )
+            return out, logdet
+        else:
+            return out
 
 
 class InvConv2dLU(nn.Module):
-    def __init__(self, in_channel):
+    def __init__(self, in_channel, reverse_log_det=False):
         super().__init__()
 
         weight = np.random.randn(in_channel, in_channel)
@@ -111,6 +127,8 @@ class InvConv2dLU(nn.Module):
         self.w_s = nn.Parameter(logabs(w_s))
         self.w_u = nn.Parameter(w_u)
 
+        self.reverse_log_det = reverse_log_det
+
     def forward(self, input):
         _, _, height, width = input.shape
 
@@ -132,8 +150,13 @@ class InvConv2dLU(nn.Module):
 
     def reverse(self, output):
         weight = self.calc_weight()
-
-        return F.conv2d(output, weight.squeeze().inverse().unsqueeze(2).unsqueeze(3))
+        out = F.conv2d(output, weight.squeeze().inverse().unsqueeze(2).unsqueeze(3))
+        if self.reverse_log_det:
+            _, _, height, width = out.shape
+            logdet = height * width * torch.sum(self.w_s)
+            return out, logdet
+        else:
+            return out
 
 
 class ZeroConv2d(nn.Module):
@@ -154,10 +177,11 @@ class ZeroConv2d(nn.Module):
 
 
 class AffineCoupling(nn.Module):
-    def __init__(self, in_channel, filter_size=512, affine=True):
+    def __init__(self, in_channel, filter_size=512, affine=True, reverse_log_det=False):
         super().__init__()
 
         self.affine = affine
+        self.reverse_log_det = reverse_log_det
 
         self.net = nn.Sequential(
             nn.Conv2d(in_channel // 2, filter_size, 3, padding=1),
@@ -202,26 +226,35 @@ class AffineCoupling(nn.Module):
             # in_a = (out_a - t) / s
             in_b = out_b / s - t
 
+            logdet = torch.sum(torch.log(s).view(output.shape[0], -1), 1)
+
         else:
             net_out = self.net(out_a)
             in_b = out_b - net_out
 
-        return torch.cat([out_a, in_b], 1)
+            logdet = None
+
+        out = torch.cat([out_a, in_b], 1)
+
+        if self.reverse_log_det:
+            return out, logdet
+        else:
+            return out
 
 
 class Flow(nn.Module):
-    def __init__(self, in_channel, affine=True, conv_lu=True):
+    def __init__(self, in_channel, affine=True, conv_lu=True, reverse_log_det=False):
         super().__init__()
-
-        self.actnorm = ActNorm(in_channel)
+        self.reverse_log_det = reverse_log_det
+        self.actnorm = ActNorm(in_channel, reverse_log_det=reverse_log_det)
 
         if conv_lu:
-            self.invconv = InvConv2dLU(in_channel)
+            self.invconv = InvConv2dLU(in_channel, reverse_log_det=reverse_log_det)
 
         else:
-            self.invconv = InvConv2d(in_channel)
+            self.invconv = InvConv2d(in_channel, reverse_log_det=reverse_log_det)
 
-        self.coupling = AffineCoupling(in_channel, affine=affine)
+        self.coupling = AffineCoupling(in_channel, affine=affine, reverse_log_det=reverse_log_det)
 
     def forward(self, input):
         out, logdet = self.actnorm(input)
@@ -235,11 +268,22 @@ class Flow(nn.Module):
         return out, logdet
 
     def reverse(self, output):
-        input = self.coupling.reverse(output)
-        input = self.invconv.reverse(input)
-        input = self.actnorm.reverse(input)
+        if self.reverse_log_det:
+            input, logdet = self.coupling.reverse(output)
+            if logdet is None:
+                logdet = .0
+            input, logdet2 = self.invconv.reverse(input)
+            logdet = logdet + logdet2
+            input, logdet3 = self.actnorm.reverse(input)
+            logdet = logdet + logdet3
 
-        return input
+            return input, logdet
+        else:
+            input = self.coupling.reverse(output)
+            input = self.invconv.reverse(input)
+            input = self.actnorm.reverse(input)
+
+            return input
 
 
 def gaussian_log_p(x, mean, log_sd):
@@ -251,14 +295,14 @@ def gaussian_sample(eps, mean, log_sd):
 
 
 class Block(nn.Module):
-    def __init__(self, in_channel, n_flow, split=True, affine=True, conv_lu=True):
+    def __init__(self, in_channel, n_flow, split=True, affine=True, conv_lu=True, reverse_log_det=False):
         super().__init__()
-
+        self.reverse_log_det = reverse_log_det
         squeeze_dim = in_channel * 4
 
         self.flows = nn.ModuleList()
         for i in range(n_flow):
-            self.flows.append(Flow(squeeze_dim, affine=affine, conv_lu=conv_lu))
+            self.flows.append(Flow(squeeze_dim, affine=affine, conv_lu=conv_lu, reverse_log_det=reverse_log_det))
 
         self.split = split
 
@@ -319,7 +363,12 @@ class Block(nn.Module):
                 input = z
 
         for flow in self.flows[::-1]:
-            input = flow.reverse(input)
+            logdet = 0.
+            if self.reverse_log_det:
+                input, ld = flow.reverse(input)
+                logdet = logdet + ld
+            else:
+                input = flow.reverse(input)
 
         b_size, n_channel, height, width = input.shape
 
@@ -328,22 +377,24 @@ class Block(nn.Module):
         unsqueezed = unsqueezed.contiguous().view(
             b_size, n_channel // 4, height * 2, width * 2
         )
-
-        return unsqueezed
+        if self.reverse_log_det:
+            return unsqueezed, logdet
+        else:
+            return unsqueezed
 
 
 class Glow(nn.Module):
     def __init__(
-        self, in_channel, n_flow, n_block, affine=True, conv_lu=True
+        self, in_channel, n_flow, n_block, affine=True, conv_lu=True, reverse_log_det=False
     ):
         super().__init__()
-
+        self.reverse_log_det = reverse_log_det
         self.blocks = nn.ModuleList()
         n_channel = in_channel
         for i in range(n_block - 1):
-            self.blocks.append(Block(n_channel, n_flow, affine=affine, conv_lu=conv_lu))
+            self.blocks.append(Block(n_channel, n_flow, affine=affine, conv_lu=conv_lu, reverse_log_det=reverse_log_det))
             n_channel *= 2
-        self.blocks.append(Block(n_channel, n_flow, split=False, affine=affine))
+        self.blocks.append(Block(n_channel, n_flow, split=False, affine=affine, reverse_log_det=reverse_log_det))
 
     def forward(self, input):
         log_p_sum = 0
@@ -362,11 +413,22 @@ class Glow(nn.Module):
         return log_p_sum, logdet, z_outs
 
     def reverse(self, z_list, reconstruct=False):
+        logdet = 0.
         for i, block in enumerate(self.blocks[::-1]):
             if i == 0:
-                input = block.reverse(z_list[-1], z_list[-1], reconstruct=reconstruct)
+                if self.reverse_log_det:
+                    input, ld = block.reverse(z_list[-1], z_list[-1], reconstruct=reconstruct)
+                    logdet = logdet + ld
+                else:
+                    input = block.reverse(z_list[-1], z_list[-1], reconstruct=reconstruct)
 
             else:
-                input = block.reverse(input, z_list[-(i + 1)], reconstruct=reconstruct)
-
-        return input
+                if self.reverse_log_det:
+                    input, ld = block.reverse(input, z_list[-(i + 1)], reconstruct=reconstruct)
+                    logdet = logdet + ld
+                else:
+                    input = block.reverse(input, z_list[-(i + 1)], reconstruct=reconstruct)
+        if self.reverse_log_det:
+            return input, logdet
+        else:
+            return input
