@@ -41,6 +41,7 @@ parser.add_argument("--workers", default=0, type=int, help="num workers")
 parser.add_argument("--temp", default=0.7, type=float, help="temperature of sampling")
 parser.add_argument("--n_sample", default=20, type=int, help="number of samples")
 parser.add_argument("--sample-path", type=str, default='samples', help="Path to image directory")
+parser.add_argument('--model-path', default='checkpoint', type=Path)
 parser.add_argument("--path", default='data', type=Path, help="Path to image directory")
 parser.add_argument("--path-to-clusters", type=Path, help="Path to image directory", default='data')
 parser.add_argument("--seed", default=42, type=int, help="random seed")
@@ -89,6 +90,9 @@ def calc_loss(log_p, logdet, image_size, n_bins):
 def train(args, model, optimizer):
     sample_path = Path(args.sample_path)
     sample_path.mkdir(exist_ok=True, parents=True)
+
+    model_path = args.model_path / f'kl'
+    model_path.mkdir(exist_ok=True, parents=True)
 
     laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
     # train_loader = iter(train_loader)
@@ -149,25 +153,42 @@ def train(args, model, optimizer):
 
             if global_iter % args.samples_every == 0:
                 with torch.no_grad():
-                    utils.save_image(
-                        model_single.reverse(z_sample).cpu().data,
-                        sample_path / f"{str(global_iter + 1).zfill(6)}.png",
-                        normalize=True,
-                        nrow=10,
-                        # range=(-0.5, 0.5),
-                        value_range=(-0.5, 0.5),
+                    try:
+                        utils.save_image(
+                            model_single.reverse(z_sample).cpu().data,
+                            sample_path / f"{str(global_iter + 1).zfill(6)}.png",
+                            normalize=True,
+                            nrow=10,
+                            # range=(-0.5, 0.5),
+                            value_range=(-0.5, 0.5),
+                            )
+                    except:
+                        utils.save_image(
+                            model_single.reverse(z_sample).cpu().data,
+                            sample_path / f"{str(global_iter + 1).zfill(6)}.png",
+                            normalize=True,
+                            nrow=10,
+                            range=(-0.5, 0.5),
+                            # value_range=(-0.5, 0.5),
                         )
                 if args.wandb:
                     wandb.save((sample_path / f"{str(global_iter + 1).zfill(6)}.png").as_posix())
 
             if global_iter % args.model_every == 0:
                 torch.save(
-                    model.state_dict(), f"checkpoint/model_{str(global_iter + 1).zfill(6)}.pt"
+                    model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}.pt"
                 )
                 torch.save(
-                    optimizer.state_dict(), f"checkpoint/optim_{str(global_iter + 1).zfill(6)}.pt"
+                    optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}.pt"
                 )
             global_iter += 1
+
+    torch.save(
+        model.state_dict(), model_path / f"model_end.pt"
+    )
+    torch.save(
+        optimizer.state_dict(), model_path / f"optim_end.pt"
+    )
 
 
 if __name__ == "__main__":
