@@ -120,7 +120,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                 log_p  # log likelihood data
         )
 
-        return reverse_kl.mean() + args.kl_weight * forward_nll
+        return reverse_kl.mean() + args.kl_weight * forward_nll, reverse_kl.mean(), forward_nll
 
     n_bins = 2.0 ** args.n_bits
 
@@ -166,7 +166,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             # loss and metrics
             logdet = reverse_logdet.mean()  # todo: verify
             data_log_likelihood = -torch.from_numpy(np.concatenate(data_nll)).to(device)
-            loss = calc_loss(log_p=data_log_likelihood, log_q=log_p, logdet=logdet, forward_log_p=forward_log_p, forward_logdet=forward_logdet)
+            loss, reverse, forward = calc_loss(log_p=data_log_likelihood, log_q=log_p, logdet=logdet, forward_log_p=forward_log_p, forward_logdet=forward_logdet)
             model_ll = ((log_p + logdet) / n_pixel).mean()
             log_p = (log_p / (log(2) * n_pixel)).mean()
             log_det = (logdet / (log(2) * n_pixel)).mean()
@@ -181,13 +181,16 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             optimizer.step()
 
             pbar.set_description(
-                f"Loss: {loss.item():.5f}; data LL: {-data_nll:.5f};  model LL: {model_ll.item():.5f}; "
+                f"Loss: {loss.item():.5f}; reverse: {reverse.item():.5f}; forward (nll): {forward.item():.5f}; "
+                f"data LL: {-data_nll:.5f};  model LL: {model_ll.item():.5f}; "
                 f"logP: {log_p.item():.5f}; logdet: {log_det.item():.5f}; lr: {warmup_lr:.7f}"
             )
 
             if args.wandb:
                 wandb.log({
                     'loss': loss.item(),
+                    'reverse-kl': reverse.item(),
+                    'forward-nll': forward.item(),
                     'data_ll': -data_nll,
                     'model_ll': model_ll.item(),
                     'logP': log_p.item(),
