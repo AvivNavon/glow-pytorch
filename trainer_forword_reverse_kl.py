@@ -153,6 +153,10 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             # pass through Glow
             (image, ) = x_batch
             image = image.to(device)
+            if args.n_bits < 8:
+                image = torch.floor(image / 2 ** (8 - args.n_bits))
+
+            image = image / n_bins - 0.5
             forward_log_p, forward_logdet, _ = model(image + torch.rand_like(image) / n_bins)
 
             # pass through image gpt
