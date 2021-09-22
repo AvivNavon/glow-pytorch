@@ -122,18 +122,19 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
     global_iter = 0
     for i in pbar:
         batch, log_probs = gen_batch()
+        # todo: we need logdet for each z in the batch?
         sampled_images, reverse_logdet = model.module.reverse(batch)
         # todo: how to calc. log probs?
         log_p = sum(log_probs)
         log_p = log_p.to(device)
-        sampled_images = sampled_images / (sampled_images.abs().max() * 2.)  # approx. (-.5, .5)
+        # sampled_images = sampled_images / (sampled_images.abs().max() * 2.)  # approx. (-.5, .5)
+        sampled_images = torch.clamp(sampled_images, -1., 1.)
 
         # pass through image gpt
         sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
         # NOTE: expect channels last
         # clusters are in (-1, 1)
-        # todo: maybe do this on Glow model's output? some other transformation?
-        sampled_images_numpy = sampled_images_numpy * 2.  # (-1, 1)
+        # sampled_images_numpy = sampled_images_numpy * 2.  # (-1, 1)
 
         clustered_sampled_images = image_gpt.color_quantize(sampled_images_numpy)
         data_nll = image_gpt.eval_model(clustered_sampled_images)
@@ -180,7 +181,8 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                         normalize=True,
                         nrow=10,
                         # range=(-0.5, 0.5),
-                        value_range=(-0.5, 0.5),
+                        # value_range=(-0.5, 0.5),
+                        value_range=(-1., 1.),
                         )
                 except:
                     utils.save_image(
@@ -188,7 +190,8 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                         sample_path / f"{str(global_iter + 1).zfill(6)}.png",
                         normalize=True,
                         nrow=10,
-                        range=(-0.5, 0.5),
+                        # range=(-0.5, 0.5),
+                        range=(-1., 1),
                         # value_range=(-0.5, 0.5),
                         )
             if args.wandb:

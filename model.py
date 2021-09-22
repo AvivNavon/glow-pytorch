@@ -225,7 +225,7 @@ class AffineCoupling(nn.Module):
             s = F.sigmoid(log_s + 2)
             # in_a = (out_a - t) / s
             in_b = out_b / s - t
-
+            # todo: possibly an error here with the calculation of the logdet
             logdet = torch.sum(torch.log(s).view(output.shape[0], -1), 1)
 
         else:
