@@ -120,7 +120,6 @@ def eval_model(model, loader, desc=None):
         log_p, logdet, _ = model(image)
         curr_log_likelihood = (logdet + log_p - log(n_bins) * n_pixel) / (n_pixel * log(2))
         log_likelihood.extend(curr_log_likelihood.cpu().detach().numpy().tolist())
-        break
     return log_likelihood
 
 
