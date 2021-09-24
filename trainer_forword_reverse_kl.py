@@ -42,7 +42,7 @@ parser.add_argument(
 # )
 parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
 parser.add_argument("--samples-every", default=250, type=int, help="samples every")
-parser.add_argument("--model-every", default=500000, type=int, help="model every")
+parser.add_argument("--model-every", default=25000, type=int, help="model every")
 parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
 parser.add_argument("--model-ll-clamp", default=-np.inf, type=float, help="model log likelihood clamp")
 parser.add_argument("--clip", default=100, type=float, help="grad clipping")

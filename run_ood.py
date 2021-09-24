@@ -83,11 +83,15 @@ in_dist_loader = get_loader_in_dist(args.path, args.path_to_clusters, device=dev
 # out dist data
 dataset_class = dict(mnist=MNIST, cifar10=CIFAR10)[args.ood_data_name]
 image_transform = [
-    transforms.ToTensor(),
+    # transforms.ToTensor(),
 ]
 if args.ood_data_name == 'mnist':
     image_transform.append(transforms.Pad(padding=2))
+    image_transform.append(transforms.ToTensor())
     image_transform.append(lambda image: image.repeat(3, 1, 1))  # duplicate along channel dim.
+
+else:
+    image_transform.append(transforms.ToTensor())
 
 transform = transforms.Compose(image_transform)
 ood_dataset = dataset_class(args.ood_data_path, train=False, transform=transform, download=True)
