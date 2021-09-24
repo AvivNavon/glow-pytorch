@@ -82,9 +82,14 @@ in_dist_loader = get_loader_in_dist(args.path, args.path_to_clusters, device=dev
 
 # out dist data
 dataset_class = dict(mnist=MNIST, cifar10=CIFAR10)[args.ood_data_name]
-transform = transforms.Compose([
+image_transform = [
     transforms.ToTensor(),
-])
+]
+if args.ood_data_name == 'mnist':
+    image_transform.append(transforms.Pad(padding=2))
+    image_transform.append(lambda image: image.repeat(3, 1, 1))  # duplicate along channel dim.
+
+transform = transforms.Compose(image_transform)
 ood_dataset = dataset_class(args.ood_data_path, train=False, transform=transform, download=True)
 out_dist_loader = torch.utils.data.DataLoader(ood_dataset, batch_size=args.batch_size, shuffle=False)
 
@@ -111,9 +116,11 @@ def eval_model(model, loader, desc=None):
 
         image = image / n_bins - 0.5
 
-        log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)
+        # log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)  # todo: remove random?
+        log_p, logdet, _ = model(image)
         curr_log_likelihood = (logdet + log_p - log(n_bins) * n_pixel) / (n_pixel * log(2))
         log_likelihood.extend(curr_log_likelihood.cpu().detach().numpy().tolist())
+        break
     return log_likelihood
 
 
