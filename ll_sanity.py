@@ -121,7 +121,7 @@ def gen_batch(batch_size=args.batch_size):
 n_bins = 2.0 ** args.n_bits
 n_pixel = args.img_size * args.img_size * 3
 ratio = []
-total = 0.
+total = 0
 with torch.no_grad():
     with tqdm(range(args.n_batch), total=args.n_batch) as iterator:
         for i in iterator:
