@@ -21,7 +21,7 @@ from imagegpt.imagegpt import ImageGPT
 
 
 parser = argparse.ArgumentParser(description="Glow trainer", parents=[common_parser])
-parser.add_argument("--batch-size", default=4, type=int, help="batch size")
+parser.add_argument("--batch-size", default=2, type=int, help="batch size")
 parser.add_argument("--n-batch", default=250, type=int, help="number of batch")
 parser.add_argument(
     "--n_flow", default=32, type=int, help="number of flows in each block"
@@ -121,6 +121,7 @@ def gen_batch(batch_size=args.batch_size):
 n_bins = 2.0 ** args.n_bits
 n_pixel = args.img_size * args.img_size * 3
 ratio = []
+total = 0.
 with torch.no_grad():
     with tqdm(range(args.n_batch), total=args.n_batch) as iterator:
         for i in iterator:
@@ -144,4 +145,5 @@ with torch.no_grad():
             image_gpt_likelihood = np.exp(-np.concatenate(data_nll))
 
             ratio.extend((image_gpt_likelihood / glow_likelihood).tolist())
-            iterator.set_description(f"iter {i+1}: ratio mean: {np.mean(ratio):.3f}")
+            total += len(glow_likelihood)
+            iterator.set_description(f"iter {i+1}: ratio mean: {np.mean(ratio):.3f} (number of samples {total:d})")
