@@ -59,7 +59,7 @@ class ActNorm(nn.Module):
 
     def reverse(self, output):
         # NOTE: for log det
-        _, _, height, width = output.shape
+        bs, _, height, width = output.shape
         log_abs = logabs(self.scale)
         logdet = height * width * torch.sum(log_abs)
         if self.reverse_log_det:
@@ -78,7 +78,7 @@ class InvConv2d(nn.Module):
         self.weight = nn.Parameter(weight)
 
     def forward(self, input):
-        _, _, height, width = input.shape
+        bs, _, height, width = input.shape
 
         out = F.conv2d(input, self.weight)
         logdet = (
@@ -92,7 +92,7 @@ class InvConv2d(nn.Module):
             output, self.weight.squeeze().inverse().unsqueeze(2).unsqueeze(3)
         )
         if self.reverse_log_det:
-            _, _, height, width = out.shape
+            bs, _, height, width = out.shape
             logdet = (
                     height * width * torch.slogdet(self.weight.squeeze().double())[1].float()
             )
@@ -152,7 +152,7 @@ class InvConv2dLU(nn.Module):
         weight = self.calc_weight()
         out = F.conv2d(output, weight.squeeze().inverse().unsqueeze(2).unsqueeze(3))
         if self.reverse_log_det:
-            _, _, height, width = out.shape
+            bs, _, height, width = out.shape
             logdet = height * width * torch.sum(self.w_s)
             return out, logdet
         else:
