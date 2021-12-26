@@ -183,11 +183,14 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             data_log_likelihood = -torch.from_numpy(np.concatenate(data_nll)).to(device)
 
             # NOTE: calc. log-likelihood from uniform distribution with prob args.unif_prob
-            unif_dist = torch.distributions.uniform.Uniform(low=-.5-1e-8, high=.5+1e-8)
+            unif_dist = torch.distributions.uniform.Uniform(
+                low=torch.tensor(-.5-1e-8).to(device), high=torch.tensor(.5+1e-8).to(device)
+            )
             probs = torch.ones_like(data_log_likelihood) * args.unif_prob
             masking = torch.bernoulli(probs)
+            masking = masking.to(device)
             unif_log_probs = unif_dist.log_prob(sampled_images).sum((1, 2, 3))
-
+            unif_log_probs = unif_log_probs.to(device)
             data_log_likelihood = data_log_likelihood * (1 - masking) + unif_log_probs * masking
 
             loss, reverse, forward = calc_loss(
