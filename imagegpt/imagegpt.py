@@ -2,10 +2,10 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.contrib.training import HParams
 
-# from imagegpt.model import model
-# from imagegpt.utils import count_parameters, color_quantize
-from model import model
-from utils import count_parameters, color_quantize
+from imagegpt.model import model
+from imagegpt.utils import count_parameters, color_quantize
+# from model import model
+# from utils import count_parameters, color_quantize
 
 
 class ImageGPT:
