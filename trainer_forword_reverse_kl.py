@@ -44,6 +44,9 @@ parser.add_argument("--n_bits", default=5, type=int, help="number of bits")
 parser.add_argument("--samples-every", default=250, type=int, help="samples every")
 parser.add_argument("--model-every", default=25000, type=int, help="model every")
 parser.add_argument("--lr", default=1e-4, type=float, help="learning rate")
+parser.add_argument(
+    "--unif-prob", default=1e-2, type=float, help="probability for calculating log-probs from uniform dist."
+)
 parser.add_argument("--model-ll-clamp", default=-np.inf, type=float, help="model log likelihood clamp")
 parser.add_argument("--clip", default=100, type=float, help="grad clipping")
 parser.add_argument("--img_size", default=32, type=int, help="image size")
@@ -108,10 +111,9 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
         :return: loss
         """
-        forward_nll = -log(n_bins) * n_pixel + forward_log_p + forward_logdet
-        forward_nll = (-forward_nll / (log(2) * n_pixel)).mean()
-
         # the original likelihood is sum over pixels, so we change to mean
+        # todo: (logdet + log_q - log(n_bins) * n_pixel) --> (logdet + log_q + log(n_bins) * n_pixel)
+        # todo: logprob eyal: logdet + log_q - log(n_bins) - log(n_pixel)
         log_probs_q = (logdet + log_q - log(n_bins) * n_pixel) / (n_pixel * log(2))
         log_probs_q = log_probs_q.clamp(min=args.model_ll_clamp)
 
@@ -120,7 +122,14 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                 log_p  # log likelihood data
         )
 
-        return reverse_kl.mean() + args.kl_weight * forward_nll, reverse_kl.mean(), forward_nll
+        if args.kl_weight > 0:
+            forward_nll = -log(n_bins) * n_pixel + forward_log_p + forward_logdet
+            forward_nll = (-forward_nll / (log(2) * n_pixel)).mean()
+
+            return reverse_kl.mean() + args.kl_weight * forward_nll, reverse_kl.mean(), forward_nll
+
+        else:
+            return reverse_kl.mean(), reverse_kl.mean(), torch.tensor(0.).to(reverse_kl.device)  # dummy
 
     n_bins = 2.0 ** args.n_bits
 
@@ -151,13 +160,15 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             sampled_images = torch.clamp(sampled_images, -.5, .5)
 
             # pass through Glow
-            (image, ) = x_batch
-            image = image.to(device)
-            if args.n_bits < 8:
-                image = torch.floor(image / 2 ** (8 - args.n_bits))
+            forward_log_p, forward_logdet = None, None
+            if args.kl_weight > 0:
+                (image, ) = x_batch
+                image = image.to(device)
+                if args.n_bits < 8:
+                    image = torch.floor(image / 2 ** (8 - args.n_bits))
 
-            image = image / n_bins - 0.5
-            forward_log_p, forward_logdet, _ = model(image + torch.rand_like(image) / n_bins)
+                image = image / n_bins - 0.5
+                forward_log_p, forward_logdet, _ = model(image + torch.rand_like(image) / n_bins)
 
             # pass through image gpt
             sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
@@ -170,7 +181,19 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             # loss and metrics
             logdet = reverse_logdet.mean()  # todo: verify
             data_log_likelihood = -torch.from_numpy(np.concatenate(data_nll)).to(device)
-            loss, reverse, forward = calc_loss(log_p=data_log_likelihood, log_q=log_p, logdet=logdet, forward_log_p=forward_log_p, forward_logdet=forward_logdet)
+
+            # NOTE: calc. log-likelihood from uniform distribution with prob args.unif_prob
+            unif_dist = torch.distributions.uniform.Uniform(low=-.5-1e-8, high=.5+1e-8)
+            probs = torch.ones_like(data_log_likelihood) * args.unif_prob
+            masking = torch.bernoulli(probs)
+            unif_log_probs = unif_dist.log_prob(sampled_images).sum((1, 2, 3))
+
+            data_log_likelihood = data_log_likelihood * (1 - masking) + unif_log_probs * masking
+
+            loss, reverse, forward = calc_loss(
+                log_p=data_log_likelihood, log_q=log_p, logdet=logdet,
+                forward_log_p=forward_log_p, forward_logdet=forward_logdet
+            )
             model_ll = ((log_p + logdet) / n_pixel).mean()
             log_p = (log_p / (log(2) * n_pixel)).mean()
             log_det = (logdet / (log(2) * n_pixel)).mean()
