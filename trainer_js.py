@@ -123,7 +123,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         logM_x = log(0.5) + torch.log(torch.exp(model_ll_x.squeeze()) + torch.exp(data_ll_x.squeeze()))
         logM_z = log(0.5) + torch.log(torch.exp(model_ll_z.squeeze()) + torch.exp(data_ll_z.squeeze()))
 
-        return 0.5 * (data_ll_x - logM_x + model_ll_z - logM_z)
+        return 0.5 * ((data_ll_x - logM_x).sum() + (model_ll_z - logM_z).sum())
 
     n_bins = 2.0 ** args.n_bits
 
