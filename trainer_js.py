@@ -118,7 +118,7 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         # log likelihood of model glow on x
         model_ll_x = (forward_logdet + forward_log_p - log(n_bins) * n_pixel) / (n_pixel * log(2))
         # log likelihood data (imageGPT) on x
-        data_ll_x = ll_generated_data
+        data_ll_x = ll_generated_data.to(model_ll_x.device)
 
         logM_x = log(0.5) + torch.log(torch.exp(model_ll_x.squeeze()) + torch.exp(data_ll_x.squeeze()))
         logM_z = log(0.5) + torch.log(torch.exp(model_ll_z.squeeze()) + torch.exp(data_ll_z.squeeze()))
