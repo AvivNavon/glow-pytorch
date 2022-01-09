@@ -240,10 +240,10 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
 
             if global_iter % args.model_every == 0:
                 torch.save(
-                    model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}.pt"
+                    model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}_lr_{args.lr}_seed_{args.seed}.pt"
                 )
                 torch.save(
-                    optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}.pt"
+                    optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}_lr_{args.lr}_seed_{args.seed}.pt"
                 )
 
             global_iter += 1
@@ -296,10 +296,10 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             wandb.log({'val/loss': val_loss, 'epoch': i})
 
     torch.save(
-        model.state_dict(), model_path / f"model_end.pt"
+        model.state_dict(), model_path / f"model_end_lr_{args.lr}_seed_{args.seed}.pt"
     )
     torch.save(
-        optimizer.state_dict(), model_path / f"optim_end.pt"
+        optimizer.state_dict(), model_path / f"optim_end_lr_{args.lr}_seed_{args.seed}.pt"
     )
 
 
