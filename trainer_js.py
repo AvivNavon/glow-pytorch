@@ -70,10 +70,12 @@ def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=1
     # todo: we need to add augmentations like in train.py
     train, test = load_dataset_with_kl(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
     dataset = TensorDataset(*train)
+    test_dataset = TensorDataset(*test)
 
     loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=args.workers)
+    test_loader = DataLoader(test_dataset, shuffle=True, batch_size=batch_size, num_workers=args.workers)
 
-    return loader
+    return loader, test_loader
 
 
 def calc_z_shapes(n_channel, input_size, n_flow, n_block):
@@ -120,8 +122,11 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         # log likelihood data (imageGPT) on x
         data_ll_x = ll_generated_data.to(model_ll_x.device)
 
-        logM_x = log(0.5) + torch.log(torch.exp(model_ll_x.squeeze()) + torch.exp(data_ll_x.squeeze()))
-        logM_z = log(0.5) + torch.log(torch.exp(model_ll_z.squeeze()) + torch.exp(data_ll_z.squeeze()))
+        # logM_x = log(0.5) + torch.log(torch.exp(model_ll_x.squeeze()) + torch.exp(data_ll_x.squeeze()))
+        # logM_z = log(0.5) + torch.log(torch.exp(model_ll_z.squeeze()) + torch.exp(data_ll_z.squeeze()))
+
+        logM_z = log(0.5) + torch.logsumexp(torch.stack((model_ll_z.squeeze(), data_ll_z.squeeze())), dim=0)
+        logM_x = log(0.5) + torch.logsumexp(torch.stack((model_ll_x.squeeze(), data_ll_x.squeeze())), dim=0)
 
         return 0.5 * ((data_ll_x - logM_x).sum() + (model_ll_z - logM_z).sum())
 
@@ -138,23 +143,23 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
             log_probs.append(normal.log_prob(z_new).sum((1, 2, 3)))
         return z_sample, log_probs
 
-    laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
+    laoder, test_loader = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
 
     pbar = trange(args.epochs)
     global_iter = 0
     for i in pbar:
         for _, x_batch in enumerate(laoder):
+            model.train()
+
             z_batch, log_probs = gen_batch()
             # todo: we need logdet for each z in the batch?
             sampled_images, reverse_logdet = model.module.reverse(z_batch)
             # todo: how to calc. log probs?
             log_p = sum(log_probs)
             log_p = log_p.to(device)
-            # sampled_images = sampled_images / (sampled_images.abs().max() * 2.)  # approx. (-.5, .5)
             sampled_images = torch.clamp(sampled_images, -.5, .5)
 
             # pass through Glow
-            forward_log_p, forward_logdet = None, None
             (image, nll_generated_data) = x_batch
             image = image.to(device)
             if args.n_bits < 8:
@@ -242,6 +247,53 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
                 )
 
             global_iter += 1
+
+        # evaluate
+        model.eval()
+        val_loss = 0.
+        total = 0.
+        with torch.no_grad():
+            for _, x_batch in enumerate(laoder):
+                z_batch, log_probs = gen_batch()
+                # todo: we need logdet for each z in the batch?
+                sampled_images, reverse_logdet = model.module.reverse(z_batch)
+                # todo: how to calc. log probs?
+                log_p = sum(log_probs)
+                log_p = log_p.to(device)
+                sampled_images = torch.clamp(sampled_images, -.5, .5)
+
+                # pass through Glow
+                (image, nll_generated_data) = x_batch
+                image = image.to(device)
+                if args.n_bits < 8:
+                    image = torch.floor(image / 2 ** (8 - args.n_bits))
+
+                image = image / n_bins - 0.5
+                forward_log_p, forward_logdet, _ = model(image + torch.rand_like(image) / n_bins)
+
+                # pass through image gpt
+                sampled_images_numpy = sampled_images.permute(0, 2, 3, 1).detach().cpu().numpy()
+                # NOTE: expect channels last
+                # clusters are in (-1, 1)
+                sampled_images_numpy = sampled_images_numpy * 2.
+                clustered_sampled_images = image_gpt.color_quantize(sampled_images_numpy)
+                data_nll = image_gpt.eval_model(clustered_sampled_images)
+
+                # loss and metrics
+                logdet = reverse_logdet.mean()  # todo: verify
+                data_log_likelihood = -torch.from_numpy(np.concatenate(data_nll)).to(device)
+                ll_generated_data = -nll_generated_data
+
+                loss = calc_loss(
+                    log_p=data_log_likelihood, log_q=log_p, logdet=logdet,  # on z
+                    forward_log_p=forward_log_p, forward_logdet=forward_logdet, ll_generated_data=ll_generated_data
+                )
+                val_loss += loss.item()
+                total += len(data_log_likelihood)
+
+        val_loss /= total
+        if args.wandb:
+            wandb.log({'val/loss': val_loss, 'epoch': i})
 
     torch.save(
         model.state_dict(), model_path / f"model_end.pt"
