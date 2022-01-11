@@ -51,11 +51,13 @@ def get_loader(path, clusters_path, sample_flag=False, device=None, batch_size=1
     # todo: refactor
     # todo: we need to add augmentations like in train.py
     train, test = load_datasets(path=path, clusters_path=clusters_path, sample_flag=sample_flag, device=device)
+    # train
     dataset = TensorDataset(train)
-
     loader = DataLoader(dataset, shuffle=True, batch_size=batch_size, num_workers=args.workers)
+    # test
+    val_loader = DataLoader(TensorDataset(test), shuffle=True, batch_size=batch_size, num_workers=args.workers)
 
-    return loader
+    return loader, val_loader
 
 
 def calc_z_shapes(n_channel, input_size, n_flow, n_block):
@@ -94,7 +96,7 @@ def train(args, model, optimizer):
     model_path = args.model_path / f'kl'
     model_path.mkdir(exist_ok=True, parents=True)
 
-    laoder = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
+    laoder, val_loader = get_loader(args.path, args.path_to_clusters, device=device, batch_size=args.batch_size)
     # train_loader = iter(train_loader)
     n_bins = 2.0 ** args.n_bits
 
@@ -108,6 +110,7 @@ def train(args, model, optimizer):
     global_iter = 0
     for epoch in pbar:
         for _, batch in enumerate(laoder):
+            model.train()
             # todo: need to change once we have likelihood
             (image, ) = batch
             image = image.to(device)
@@ -176,18 +179,43 @@ def train(args, model, optimizer):
 
             if global_iter % args.model_every == 0:
                 torch.save(
-                    model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}.pt"
+                    model.state_dict(), model_path / f"model_{str(global_iter + 1).zfill(6)}_lr_{args.lr}_seed_{args.seed}.pt.pt"
                 )
                 torch.save(
-                    optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}.pt"
+                    optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}_lr_{args.lr}_seed_{args.seed}.pt.pt"
                 )
+
+        # evaluate
+        model.eval()
+        val_loss = 0.
+        total = 0.
+        with torch.no_grad():
+            for batch in val_loader:
+                (image, ) = batch
+                image = image.to(device)
+
+                if args.n_bits < 8:
+                    image = torch.floor(image / 2 ** (8 - args.n_bits))
+
+                image = image / n_bins - 0.5
+                log_p, logdet, _ = model(image + torch.rand_like(image) / n_bins)
+                logdet = logdet.mean()
+                loss, log_p, log_det = calc_loss(log_p, logdet, args.img_size, n_bins)
+
+                val_loss += loss.item()
+                total += len(image)
+
+            val_loss /= total
+            if args.wandb:
+                wandb.log({'val/loss': val_loss, 'epoch': epoch})
+
             global_iter += 1
 
     torch.save(
-        model.state_dict(), model_path / f"model_end.pt"
+        model.state_dict(), model_path / f"model_end_lr_{args.lr}_seed_{args.seed}.pt.pt"
     )
     torch.save(
-        optimizer.state_dict(), model_path / f"optim_end.pt"
+        optimizer.state_dict(), model_path / f"optim_end_lr_{args.lr}_seed_{args.seed}.pt.pt"
     )
 
 
