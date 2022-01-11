@@ -132,11 +132,14 @@ out_path = args.out_path
 out_path.mkdir(exist_ok=True, parents=True)
 
 # NLL model
+
+# NOTE: at the end we used JS instead of R-KL, hence the name changing
+
 results = dict()
 results['nll_in'] = eval_model(model_nll, in_dist_loader, desc='NLL in')
 results['nll_out'] = eval_model(model_nll, out_dist_loader, desc='NLL out')
-results['reverse_in'] = eval_model(model_reverse, in_dist_loader, desc='Reverse in')
-results['reverse_out'] = eval_model(model_reverse, out_dist_loader, desc='Reverse out')
+results['js_in'] = eval_model(model_reverse, in_dist_loader, desc='JS in')
+results['js_out'] = eval_model(model_reverse, out_dist_loader, desc='JS out')
 
 with open((out_path / f"{args.ood_data_name}.json").as_posix(), "w") as f:
     json.dump(results, f)

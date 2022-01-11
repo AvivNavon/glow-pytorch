@@ -185,6 +185,8 @@ def train(args, model, optimizer):
                     optimizer.state_dict(), model_path / f"optim_{str(global_iter + 1).zfill(6)}_lr_{args.lr}_seed_{args.seed}.pt.pt"
                 )
 
+            global_iter += 1
+
         # evaluate
         model.eval()
         val_loss = 0.
@@ -208,8 +210,6 @@ def train(args, model, optimizer):
             val_loss /= total
             if args.wandb:
                 wandb.log({'val/loss': val_loss, 'epoch': epoch})
-
-            global_iter += 1
 
     torch.save(
         model.state_dict(), model_path / f"model_end_lr_{args.lr}_seed_{args.seed}.pt.pt"
