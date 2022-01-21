@@ -128,7 +128,14 @@ def train(args, model, optimizer, image_gpt: ImageGPT):
         logM_z = log(0.5) + torch.logsumexp(torch.stack((model_ll_z.squeeze(), data_ll_z.squeeze())), dim=0)
         logM_x = log(0.5) + torch.logsumexp(torch.stack((model_ll_x.squeeze(), data_ll_x.squeeze())), dim=0)
 
-        return 0.5 * ((data_ll_x - logM_x).sum() + (model_ll_z - logM_z).sum())
+        return 0.5 * (
+                (data_ll_x - logM_x).sum() +
+                (
+                        (model_ll_z - logM_z).sum()
+                        # NOTE: this is from the log derivative trick
+                        + ((model_ll_z - logM_z).detach() * model_ll_z).sum()
+                )
+        )
 
     n_bins = 2.0 ** args.n_bits
 
